@@ -1,0 +1,4 @@
+github.com/gomarkdown/markdown v0.0.0-20221013030248-663e2500819c h1:iyaGYbCmcYK0Ja9a3OUa2Fo+EaN0cbLu0eKpBwPFzc8=
+github.com/gomarkdown/markdown v0.0.0-20221013030248-663e2500819c/go.mod h1:JDGcbDT52eL4fju3sZ4TeHGsQwhG9nbDV21aMyhwPoA=
+github.com/gorilla/mux v1.8.0 h1:i40aqfkR1h2SlN9hojwV5ZA91wcXFOvkdNIeFDP5koI=
+github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB71So=

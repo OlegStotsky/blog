@@ -1,0 +1,10 @@
+<head>
+    <title>Oleg's Blog</title>
+</head>
+<body>
+    {{range .}}
+    <div>
+        <a href="/posts/{{.FileName}}">{{.PostName}}</a>
+    </div>
+    {{end}}
+</body>
