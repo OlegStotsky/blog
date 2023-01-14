@@ -1,3 +1,4 @@
-test
+/test
 .idea
-server
+bin
+/posts/*.html

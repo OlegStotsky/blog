@@ -1,11 +1,11 @@
 build-server:
-	go build -o server cmd/server/main.go
+	go build -o ./bin/server cmd/server/main.go
 
 build-add-post:
-	go build -o add-post cmd/add-post/main.go
+	go build -o ./bin/add-post cmd/add-post/main.go
 
 run: build-server
-	./server
+	./bin/server
 
 add-post: build-add-post
-	./add-post
+	./bin/add-post
