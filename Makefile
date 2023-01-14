@@ -1,5 +1,11 @@
-build:
-	go build -o server cmd/main.go
+build-server:
+	go build -o server cmd/server/main.go
 
-run: build
+build-add-post:
+	go build -o add-post cmd/add-post/main.go
+
+run: build-server
 	./server
+
+add-post: build-add-post
+	./add-post

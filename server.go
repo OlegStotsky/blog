@@ -193,7 +193,7 @@ func RenderMarkdownToHTML(markdownBytes []byte) []byte {
 type PostInfo struct {
 	Date time.Time
 	Name string
-	dir  string
+	Dir  string
 }
 
 func (c *PostInfo) ToFilePath(extension string) string {
@@ -201,7 +201,7 @@ func (c *PostInfo) ToFilePath(extension string) string {
 
 	fileName := fmt.Sprintf("%s_%s.%s", date, c.Name, extension)
 
-	return filepath.Join(c.dir, fileName)
+	return filepath.Join(c.Dir, fileName)
 }
 
 func (c *PostInfo) ToFileName(extension string) string {
@@ -237,6 +237,6 @@ func ParsePostInfo(filePath string) (PostInfo, error) {
 	return PostInfo{
 		Date: date,
 		Name: postName,
-		dir:  dir,
+		Dir:  dir,
 	}, nil
 }
