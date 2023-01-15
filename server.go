@@ -57,9 +57,9 @@ func (c *Server) ListenAndServe() error {
 }
 
 func (c *Server) Posts(rw http.ResponseWriter, r *http.Request) {
-	fmt.Println("got new home request")
+	fmt.Println("got new posts request")
 
-	posts, err := filepath.Glob("./posts/*.html")
+	posts, err := filepath.Glob("./posts/*.md")
 	if err != nil {
 		fmt.Println("error listing posts", err)
 		rw.WriteHeader(500)
@@ -106,22 +106,40 @@ func (c *Server) Post(rw http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("got new post request", postName)
 
-	postFileName := fmt.Sprintf("./posts/%s", postName)
-	f, err := os.Open(postFileName)
-	if err != nil {
-		fmt.Println("error opening post file", err, postFileName)
-
-		rw.WriteHeader(500)
-		return
-	}
-
-	postInfo, err := ParsePostInfo(f.Name())
+	postFilePath := fmt.Sprintf("./posts/%s", postName)
+	postInfo, err := ParsePostInfo(postFilePath)
 	if err != nil {
 		fmt.Println("error parsing post file info", err)
 
 		rw.WriteHeader(500)
 
 		return
+	}
+
+	f, err := os.Open(postFilePath)
+	if err != nil {
+		fmt.Println("error opening post file", err, postFilePath)
+		fmt.Println("will try to render markdown file with the same name", postFilePath)
+
+		_, err := RenderMarkdownPostToHTML(postInfo.ToFilePath("md"))
+		if err != nil {
+			fmt.Println("could render missing html file", postFilePath, err)
+
+			rw.WriteHeader(500)
+
+			return
+		} else {
+			fmt.Println("successfully rendered missing html file", postFilePath)
+
+			f, err = os.Open(postFilePath)
+			if err != nil {
+				fmt.Println("couldn't reopen missing html file after rendering markdown", postFilePath)
+
+				rw.WriteHeader(500)
+
+				return
+			}
+		}
 	}
 
 	postContent, err := io.ReadAll(f)
@@ -152,38 +170,47 @@ func (c *Server) RenderMarkdownToHTML() error {
 	fmt.Println("got posts", posts)
 
 	for _, post := range posts {
-		file, err := os.Open(post)
-		if err != nil {
-			return fmt.Errorf("error reading post: %w", err)
-		}
-
-		postInfo, err := ParsePostInfo(file.Name())
+		postInfo, err := RenderMarkdownPostToHTML(post)
 		if err != nil {
 			return err
-		}
-
-		content, err := io.ReadAll(file)
-		if err != nil {
-			return fmt.Errorf("error reading file %s: %w", file.Name(), err)
-		}
-
-		markdownContent := RenderMarkdownToHTML(content)
-
-		outFilePath := postInfo.ToFilePath("html")
-		res, err := os.Create(outFilePath)
-		if err != nil {
-			return fmt.Errorf("error creating rendered markdown file %s: %w", outFilePath, err)
-		}
-
-		_, err = res.Write(markdownContent)
-		if err != nil {
-			return fmt.Errorf("error writing html content to %s: %w", outFilePath, err)
 		}
 
 		fmt.Println("created rendered html for post", postInfo.Name)
 	}
 
 	return nil
+}
+
+func RenderMarkdownPostToHTML(postFilePath string) (PostInfo, error) {
+	file, err := os.Open(postFilePath)
+	if err != nil {
+		return PostInfo{}, fmt.Errorf("error reading post: %w", err)
+	}
+
+	postInfo, err := ParsePostInfo(file.Name())
+	if err != nil {
+		return PostInfo{}, err
+	}
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return PostInfo{}, fmt.Errorf("error reading file %s: %w", file.Name(), err)
+	}
+
+	markdownContent := RenderMarkdownToHTML(content)
+
+	outFilePath := postInfo.ToFilePath("html")
+	res, err := os.Create(outFilePath)
+	if err != nil {
+		return PostInfo{}, fmt.Errorf("error creating rendered markdown file %s: %w", outFilePath, err)
+	}
+
+	_, err = res.Write(markdownContent)
+	if err != nil {
+		return PostInfo{}, fmt.Errorf("error writing html content to %s: %w", outFilePath, err)
+	}
+
+	return postInfo, nil
 }
 
 func RenderMarkdownToHTML(markdownBytes []byte) []byte {
