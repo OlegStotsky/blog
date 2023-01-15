@@ -20,6 +20,8 @@ type Server struct {
 	addr   string
 	server *http.Server
 
+	debugMode bool
+
 	postsTemplate *template.Template
 	postTemplate  *template.Template
 }
@@ -30,6 +32,7 @@ func NewServer(addr string) (*Server, error) {
 	r := mux.NewRouter()
 	r.HandleFunc("/", server.Posts).Methods(http.MethodGet)
 	r.HandleFunc("/posts/{postName}", server.Post).Methods(http.MethodGet)
+	r.HandleFunc("/static/{fileName}", server.StaticHandler).Methods(http.MethodGet)
 
 	srv := http.Server{Addr: addr}
 
@@ -54,6 +57,29 @@ func NewServer(addr string) (*Server, error) {
 
 func (c *Server) ListenAndServe() error {
 	return c.server.ListenAndServe()
+}
+
+func (c *Server) StaticHandler(rw http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	fileName := vars["fileName"]
+
+	fmt.Println("static handler for file", fileName)
+
+	f, err := os.Open(filepath.Join("./static", fileName))
+	if err != nil {
+		fmt.Println("error serving static file", fileName, err)
+
+		rw.WriteHeader(500)
+
+		return
+	}
+
+	if _, err := io.Copy(rw, f); err != nil {
+		fmt.Println("error serving static file", fileName, err)
+
+		return
+	}
 }
 
 func (c *Server) Posts(rw http.ResponseWriter, r *http.Request) {
@@ -85,6 +111,7 @@ func (c *Server) Posts(rw http.ResponseWriter, r *http.Request) {
 		postsTemplateData := PostsTemplateData{
 			FileName: postInfo.ToFileName("html"),
 			PostName: postInfo.Name,
+			PostDate: postInfo.Date.Format("Jan 02 15:04 2006"),
 		}
 
 		postsTemplateDatas = append(postsTemplateDatas, postsTemplateData)
@@ -114,6 +141,13 @@ func (c *Server) Post(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(500)
 
 		return
+	}
+
+	_, err = RenderMarkdownPostToHTML(postInfo.ToFilePath("md"))
+	if err != nil {
+		fmt.Println("could render missing html file", postFilePath, err)
+
+		rw.WriteHeader(500)
 	}
 
 	f, err := os.Open(postFilePath)

@@ -8,4 +8,5 @@ type PostTemplateData struct {
 type PostsTemplateData struct {
 	FileName string
 	PostName string
+	PostDate string
 }
