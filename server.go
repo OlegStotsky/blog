@@ -24,15 +24,17 @@ type Server struct {
 
 	postsTemplate *template.Template
 	postTemplate  *template.Template
+	aboutTemplate *template.Template
 }
 
 func NewServer(addr string) (*Server, error) {
-	server := &Server{addr: addr}
+	server := &Server{addr: addr, debugMode: true}
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", server.Posts).Methods(http.MethodGet)
 	r.HandleFunc("/posts/{postName}", server.Post).Methods(http.MethodGet)
 	r.HandleFunc("/static/{fileName}", server.StaticHandler).Methods(http.MethodGet)
+	r.HandleFunc("/about", server.AboutHandler).Methods(http.MethodGet)
 
 	srv := http.Server{Addr: addr}
 
@@ -44,13 +46,28 @@ func NewServer(addr string) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing posts template: %w", err)
 	}
+	if _, err := postsTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
+		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	}
 	server.postsTemplate = postsTemplate
 
 	postTemplate, err := template.ParseFiles("./templates/post.html")
 	if err != nil {
 		return nil, fmt.Errorf("error parsing post template: %w", err)
 	}
+	if _, err := postTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
+		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	}
 	server.postTemplate = postTemplate
+
+	aboutTemplate, err := template.ParseFiles("./templates/about.html")
+	if err != nil {
+		return nil, fmt.Errorf("error parsing about template: %w", err)
+	}
+	if _, err := aboutTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
+		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	}
+	server.aboutTemplate = aboutTemplate
 
 	return server, nil
 }
@@ -77,6 +94,16 @@ func (c *Server) StaticHandler(rw http.ResponseWriter, r *http.Request) {
 
 	if _, err := io.Copy(rw, f); err != nil {
 		fmt.Println("error serving static file", fileName, err)
+
+		return
+	}
+}
+
+func (c *Server) AboutHandler(rw http.ResponseWriter, r *http.Request) {
+	fmt.Println("got new about request")
+
+	if err := c.aboutTemplate.Execute(rw, nil); err != nil {
+		fmt.Println("error serving about", err)
 
 		return
 	}
