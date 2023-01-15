@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"time"
@@ -11,11 +12,14 @@ import (
 func main() {
 	fmt.Println("enter post name")
 
-	var postName string
-	_, err := fmt.Scanln(&postName)
-	if err != nil {
-		panic(err)
+	reader := bufio.NewScanner(os.Stdin)
+	ok := reader.Scan()
+	if !ok {
+		fmt.Println("no input")
+		return
 	}
+
+	postName := reader.Text()
 
 	postInfo := blog.PostInfo{
 		Date: time.Now(),
