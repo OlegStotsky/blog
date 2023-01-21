@@ -49,6 +49,10 @@ func NewServer(addr string) (*Server, error) {
 	if _, err := postsTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
 		return nil, fmt.Errorf("error parsing navbar: %w", err)
 	}
+	if _, err := postsTemplate.New("google-analytics").ParseFiles("./templates/google-analytics.html"); err != nil {
+		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	}
+
 	server.postsTemplate = postsTemplate
 
 	postTemplate, err := template.ParseFiles("./templates/post.html")
@@ -58,6 +62,10 @@ func NewServer(addr string) (*Server, error) {
 	if _, err := postTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
 		return nil, fmt.Errorf("error parsing navbar: %w", err)
 	}
+	if _, err := postTemplate.New("google-analytics").ParseFiles("./templates/google-analytics.html"); err != nil {
+		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	}
+
 	server.postTemplate = postTemplate
 
 	aboutTemplate, err := template.ParseFiles("./templates/about.html")
@@ -65,6 +73,9 @@ func NewServer(addr string) (*Server, error) {
 		return nil, fmt.Errorf("error parsing about template: %w", err)
 	}
 	if _, err := aboutTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
+		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	}
+	if _, err := aboutTemplate.New("google-analytics").ParseFiles("./templates/google-analytics.html"); err != nil {
 		return nil, fmt.Errorf("error parsing navbar: %w", err)
 	}
 	server.aboutTemplate = aboutTemplate
