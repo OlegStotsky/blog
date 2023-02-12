@@ -3,13 +3,33 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"time"
+
+	"github.com/OlegStotsky/goflatdb"
+	"go.uber.org/zap"
 
 	"blog"
 )
 
 func main() {
+	logger, _ := zap.NewProduction()
+
+	db, err := goflatdb.NewFlatDB("/var/lib/blog", logger)
+	if err != nil {
+		fmt.Println("error opening db", err)
+
+		return
+	}
+
+	col, err := goflatdb.NewFlatDBCollection[blog.Post](db, "posts", logger)
+	if err != nil {
+		fmt.Println("error opening posts collection", err)
+
+		return
+	}
+
 	fmt.Println("enter post name")
 
 	reader := bufio.NewScanner(os.Stdin)
@@ -18,21 +38,43 @@ func main() {
 		fmt.Println("no input")
 		return
 	}
-
 	postName := reader.Text()
 
-	postInfo := blog.PostInfo{
-		Date: time.Now(),
-		Name: postName,
-		Dir:  "./posts",
+	fmt.Println("enter post filepath")
+
+	ok = reader.Scan()
+	if !ok {
+		fmt.Println("no input")
+		return
 	}
+	postPath := reader.Text()
 
-	path := postInfo.ToFilePath("md")
-
-	f, err := os.Create(path)
+	f, err := os.Open(postPath)
 	if err != nil {
-		panic(err)
+		fmt.Println("error opening post file", err)
+
+		return
 	}
 
-	fmt.Println("created post file", f.Name())
+	content, err := io.ReadAll(f)
+	if err != nil {
+		fmt.Println("error reading post file", err)
+
+		return
+	}
+
+	markdown := blog.RenderMarkdownToHTML(content)
+
+	res, err := col.Insert(&blog.Post{
+		Name:    postName,
+		Date:    time.Now(),
+		Content: string(markdown),
+	})
+	if err != nil {
+		fmt.Println("error inserting post", err)
+
+		return
+	}
+
+	fmt.Println("successfully inserted post", res.ID)
 }

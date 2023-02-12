@@ -7,10 +7,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 	"text/template"
 	"time"
 
+	"github.com/OlegStotsky/goflatdb"
 	"github.com/gomarkdown/markdown"
 	"github.com/gorilla/mux"
 )
@@ -28,18 +29,20 @@ type Server struct {
 	aboutTemplate *template.Template
 
 	commentService *CommentService
+	postService    *PostService
 }
 
-func NewServer(addr string, commentService *CommentService) (*Server, error) {
+func NewServer(addr string, commentService *CommentService, postService *PostService) (*Server, error) {
 	server := &Server{
 		addr:           addr,
 		debugMode:      true,
 		commentService: commentService,
+		postService:    postService,
 	}
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", server.Posts).Methods(http.MethodGet)
-	r.HandleFunc("/posts/{postName}", server.Post).Methods(http.MethodGet)
+	r.HandleFunc("/posts/{postID}", server.Post).Methods(http.MethodGet)
 	r.HandleFunc("/static/{fileName}", server.StaticHandler).Methods(http.MethodGet)
 	r.HandleFunc("/about", server.AboutHandler).Methods(http.MethodGet)
 	r.HandleFunc("/posts/{postName}/comments", server.CommentHandler).Methods(http.MethodPost)
@@ -134,39 +137,19 @@ func (c *Server) AboutHandler(rw http.ResponseWriter, r *http.Request) {
 func (c *Server) Posts(rw http.ResponseWriter, r *http.Request) {
 	fmt.Println("got new posts request")
 
-	posts, err := filepath.Glob("./posts/*.md")
+	posts, err := c.postService.GetPosts()
 	if err != nil {
 		fmt.Println("error listing posts", err)
 		rw.WriteHeader(500)
 		return
 	}
 
-	postsTemplateDatas := []PostsTemplateData{}
+	postsViewData := []PostsTemplateData{}
 	for _, post := range posts {
-		file, err := os.Open(post)
-		if err != nil {
-			fmt.Println("error reading post", err)
-			rw.WriteHeader(500)
-			return
-		}
-
-		postInfo, err := ParsePostInfo(file.Name())
-		if err != nil {
-			fmt.Println("error parsing post", err)
-			rw.WriteHeader(500)
-			return
-		}
-
-		postsTemplateData := PostsTemplateData{
-			FileName: postInfo.ToFileName("html"),
-			PostName: postInfo.Name,
-			PostDate: postInfo.Date.Format("Jan 02 15:04 2006"),
-		}
-
-		postsTemplateDatas = append(postsTemplateDatas, postsTemplateData)
+		postsViewData = append(postsViewData, PostToPostsViewData(post))
 	}
 
-	if err := c.postsTemplate.Execute(rw, postsTemplateDatas); err != nil {
+	if err := c.postsTemplate.Execute(rw, postsViewData); err != nil {
 		fmt.Println("error executing posts template", err)
 		rw.WriteHeader(500)
 		return
@@ -175,93 +158,49 @@ func (c *Server) Posts(rw http.ResponseWriter, r *http.Request) {
 	fmt.Println("servers posts successfully")
 }
 
+func PostToPostsViewData(post goflatdb.FlatDBModel[Post]) PostsTemplateData {
+	return PostsTemplateData{
+		Name: post.Data.Name,
+		ID:   post.ID,
+		Date: post.Data.Date.Format(PostDateLayout),
+	}
+}
+
+func PostToPostViewData(post goflatdb.FlatDBModel[Post]) PostTemplateData {
+	return PostTemplateData{
+		Title:   post.Data.Name,
+		Content: post.Data.Content,
+	}
+}
+
 func (c *Server) Post(rw http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	postName := vars["postName"]
+	postID := vars["postID"]
 
-	fmt.Println("got new post request", postName)
+	fmt.Println("got new post request", postID)
 
-	postFilePath := fmt.Sprintf("./posts/%s", postName)
-	postInfo, err := ParsePostInfo(postFilePath)
+	postIDInt, err := strconv.ParseUint(postID, 10, 64)
 	if err != nil {
-		fmt.Println("error parsing post file info", err)
+		writeErrorResponse(400, ErrorBadPostID, "invalid post id", rw)
+
+		return
+	}
+
+	post, err := c.postService.GetPost(postIDInt)
+	if err != nil {
+		fmt.Println("error getting post", err)
 
 		rw.WriteHeader(500)
 
 		return
 	}
 
-	_, err = RenderMarkdownPostToHTML(postInfo.ToFilePath("md"))
-	if err != nil {
-		fmt.Println("could render missing html file", postFilePath, err)
-
-		rw.WriteHeader(500)
-	}
-
-	f, err := os.Open(postFilePath)
-	if err != nil {
-		fmt.Println("error opening post file", err, postFilePath)
-		fmt.Println("will try to render markdown file with the same name", postFilePath)
-
-		_, err := RenderMarkdownPostToHTML(postInfo.ToFilePath("md"))
-		if err != nil {
-			fmt.Println("could render missing html file", postFilePath, err)
-
-			rw.WriteHeader(500)
-
-			return
-		} else {
-			fmt.Println("successfully rendered missing html file", postFilePath)
-
-			f, err = os.Open(postFilePath)
-			if err != nil {
-				fmt.Println("couldn't reopen missing html file after rendering markdown", postFilePath)
-
-				rw.WriteHeader(500)
-
-				return
-			}
-		}
-	}
-
-	postContent, err := io.ReadAll(f)
-	if err != nil {
-		fmt.Println("error reading post file", err)
-		rw.WriteHeader(500)
-		return
-	}
-
-	postTemplateData := &PostTemplateData{
-		Title:   postInfo.Name,
-		Content: string(postContent),
-	}
-
-	if err := c.postTemplate.Execute(rw, postTemplateData); err != nil {
+	if err := c.postTemplate.Execute(rw, PostToPostViewData(post)); err != nil {
 		fmt.Println("error executing post template", err)
 
 		return
 	}
-}
-
-func (c *Server) RenderMarkdownToHTML() error {
-	posts, err := filepath.Glob("./posts/*.md")
-	if err != nil {
-		return fmt.Errorf("glob error: %w", err)
-	}
-
-	fmt.Println("got posts", posts)
-
-	for _, post := range posts {
-		postInfo, err := RenderMarkdownPostToHTML(post)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("created rendered html for post", postInfo.Name)
-	}
-
-	return nil
 }
 
 type CommentRequest struct {
@@ -312,7 +251,7 @@ func (c *Server) CommentHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	err = c.commentService.SaveComment(&Comment{
-		Post:    postName,
+		//PostID:  post.ID, //todo
 		Author:  commentRequest.Author,
 		Date:    time.Now(),
 		Comment: commentRequest.Comment,
@@ -345,89 +284,6 @@ func writeErrorResponse(statusCode int, errorCode int, errorMessage string, rw h
 	return nil
 }
 
-func RenderMarkdownPostToHTML(postFilePath string) (PostInfo, error) {
-	file, err := os.Open(postFilePath)
-	if err != nil {
-		return PostInfo{}, fmt.Errorf("error reading post: %w", err)
-	}
-
-	postInfo, err := ParsePostInfo(file.Name())
-	if err != nil {
-		return PostInfo{}, err
-	}
-
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return PostInfo{}, fmt.Errorf("error reading file %s: %w", file.Name(), err)
-	}
-
-	markdownContent := RenderMarkdownToHTML(content)
-
-	outFilePath := postInfo.ToFilePath("html")
-	res, err := os.Create(outFilePath)
-	if err != nil {
-		return PostInfo{}, fmt.Errorf("error creating rendered markdown file %s: %w", outFilePath, err)
-	}
-
-	_, err = res.Write(markdownContent)
-	if err != nil {
-		return PostInfo{}, fmt.Errorf("error writing html content to %s: %w", outFilePath, err)
-	}
-
-	return postInfo, nil
-}
-
 func RenderMarkdownToHTML(markdownBytes []byte) []byte {
 	return markdown.ToHTML(markdownBytes, nil, nil)
-}
-
-type PostInfo struct {
-	Date time.Time
-	Name string
-	Dir  string
-}
-
-func (c *PostInfo) ToFilePath(extension string) string {
-	date := c.Date.Format(PostDateLayout)
-
-	fileName := fmt.Sprintf("%s_%s.%s", date, c.Name, extension)
-
-	return filepath.Join(c.Dir, fileName)
-}
-
-func (c *PostInfo) ToFileName(extension string) string {
-	date := c.Date.Format(PostDateLayout)
-
-	return fmt.Sprintf("%s_%s.%s", date, c.Name, extension)
-}
-
-// parses post info of type yyyyy-mm-dd-hh:mm_my-post-name.ext
-func ParsePostInfo(filePath string) (PostInfo, error) {
-	dir := filepath.Dir(filePath)
-	name := filepath.Base(filePath)
-
-	parts := strings.Split(name, ".")
-	if len(parts) != 2 {
-		return PostInfo{}, fmt.Errorf("error parsing post filename %s: got more than 2 parts", filePath)
-	}
-
-	file := parts[0]
-
-	parts2 := strings.Split(file, "_")
-	if len(parts) != 2 {
-		return PostInfo{}, fmt.Errorf("error parsing post filename %s: got more than 2 parts", filePath)
-	}
-
-	date, err := time.Parse(PostDateLayout, parts2[0])
-	if err != nil {
-		return PostInfo{}, fmt.Errorf("error parsing date from file %s: %w", filePath, err)
-	}
-
-	postName := parts2[1]
-
-	return PostInfo{
-		Date: date,
-		Name: postName,
-		Dir:  dir,
-	}, nil
 }

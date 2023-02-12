@@ -31,9 +31,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	commentsCollection, err := goflatdb.NewFlatDBCollection[blog.Comment](db, "comments", logger)
+	commentsCollection, err := goflatdb.NewFlatDBCollection[blog.Comment](db, blog.CommentsCollectionName, logger)
 	if err != nil {
 		fmt.Println("error creating comments collection", err)
+
+		os.Exit(1)
+	}
+
+	if err := commentsCollection.Init(); err != nil {
+		fmt.Println("error initing comments collection", err)
 
 		os.Exit(1)
 	}
@@ -45,12 +51,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	server, err := blog.NewServer("localhost:3000", commentService)
+	postsCollection, err := goflatdb.NewFlatDBCollection[blog.Post](db, blog.PostsCollectionName, logger)
 	if err != nil {
-		panic(err)
+		fmt.Println("error creating posts collection", err)
+
+		os.Exit(1)
 	}
 
-	err = server.RenderMarkdownToHTML()
+	if err := postsCollection.Init(); err != nil {
+		fmt.Println("error initing comments collection", err)
+
+		os.Exit(1)
+	}
+
+	postsService := blog.NewPostService(postsCollection)
+
+	server, err := blog.NewServer("localhost:3000", commentService, postsService)
 	if err != nil {
 		panic(err)
 	}

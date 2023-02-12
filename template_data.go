@@ -6,7 +6,7 @@ type PostTemplateData struct {
 }
 
 type PostsTemplateData struct {
-	FileName string
-	PostName string
-	PostDate string
+	Name string
+	ID   uint64
+	Date string
 }

@@ -21,9 +21,9 @@
         <h2 class="posts-header">Posts</h2>
         {{range .}}
         <div class="post-container">
-            <a href="/posts/{{.FileName}}">{{.PostName}}</a>
+            <a href="/posts/{{.ID}}">{{.Name}}</a>
             <span class="post-container-date">
-                {{.PostDate}}
+                {{.Date}}
             </span>
         </div>
         {{end}}
