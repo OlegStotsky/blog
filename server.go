@@ -1,6 +1,7 @@
 package blog
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,16 +26,23 @@ type Server struct {
 	postsTemplate *template.Template
 	postTemplate  *template.Template
 	aboutTemplate *template.Template
+
+	commentService *CommentService
 }
 
-func NewServer(addr string) (*Server, error) {
-	server := &Server{addr: addr, debugMode: true}
+func NewServer(addr string, commentService *CommentService) (*Server, error) {
+	server := &Server{
+		addr:           addr,
+		debugMode:      true,
+		commentService: commentService,
+	}
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", server.Posts).Methods(http.MethodGet)
 	r.HandleFunc("/posts/{postName}", server.Post).Methods(http.MethodGet)
 	r.HandleFunc("/static/{fileName}", server.StaticHandler).Methods(http.MethodGet)
 	r.HandleFunc("/about", server.AboutHandler).Methods(http.MethodGet)
+	r.HandleFunc("/posts/{postName}/comments", server.CommentHandler).Methods(http.MethodPost)
 
 	srv := http.Server{Addr: addr}
 
@@ -46,11 +54,8 @@ func NewServer(addr string) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing posts template: %w", err)
 	}
-	if _, err := postsTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
-		return nil, fmt.Errorf("error parsing navbar: %w", err)
-	}
-	if _, err := postsTemplate.New("google-analytics").ParseFiles("./templates/google-analytics.html"); err != nil {
-		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	if err := addAllPageTemplates(postsTemplate); err != nil {
+		return nil, err
 	}
 
 	server.postsTemplate = postsTemplate
@@ -59,11 +64,8 @@ func NewServer(addr string) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing post template: %w", err)
 	}
-	if _, err := postTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
-		return nil, fmt.Errorf("error parsing navbar: %w", err)
-	}
-	if _, err := postTemplate.New("google-analytics").ParseFiles("./templates/google-analytics.html"); err != nil {
-		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	if err := addAllPageTemplates(postTemplate); err != nil {
+		return nil, err
 	}
 
 	server.postTemplate = postTemplate
@@ -72,15 +74,24 @@ func NewServer(addr string) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing about template: %w", err)
 	}
-	if _, err := aboutTemplate.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
-		return nil, fmt.Errorf("error parsing navbar: %w", err)
+	if err := addAllPageTemplates(aboutTemplate); err != nil {
+		return nil, err
 	}
-	if _, err := aboutTemplate.New("google-analytics").ParseFiles("./templates/google-analytics.html"); err != nil {
-		return nil, fmt.Errorf("error parsing navbar: %w", err)
-	}
+
 	server.aboutTemplate = aboutTemplate
 
 	return server, nil
+}
+
+func addAllPageTemplates(t *template.Template) error {
+	if _, err := t.New("navbar").ParseFiles("./templates/navbar.html"); err != nil {
+		return fmt.Errorf("error parsing navbar template: %w", err)
+	}
+	if _, err := t.New("google-analytics").ParseFiles("./templates/google-analytics.html"); err != nil {
+		return fmt.Errorf("error parsing google analytics template: %w", err)
+	}
+
+	return nil
 }
 
 func (c *Server) ListenAndServe() error {
@@ -249,6 +260,87 @@ func (c *Server) RenderMarkdownToHTML() error {
 
 		fmt.Println("created rendered html for post", postInfo.Name)
 	}
+
+	return nil
+}
+
+type CommentRequest struct {
+	Author  string `json:"author"`
+	Comment string `json:"comment"`
+}
+
+type ErrorResponse struct {
+	ErrorCode    int    `json:"code"`
+	ErrorMessage string `json:"message"`
+}
+
+func (c *Server) CommentHandler(rw http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	postName := vars["postName"]
+
+	fmt.Println("handling comment request for post", postName)
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		fmt.Println("error handling comment request", err)
+
+		rw.WriteHeader(500)
+
+		return
+	}
+
+	commentRequest := CommentRequest{}
+	if err := json.Unmarshal(body, &commentRequest); err != nil {
+		fmt.Println("error handling comment")
+
+		rw.WriteHeader(500)
+
+		return
+	}
+
+	if len(commentRequest.Author) > 100 {
+		writeErrorResponse(http.StatusBadRequest, ErrorBadCommentAuthorLen, "author should be under 100 characters", rw)
+
+		return
+	}
+
+	if len(commentRequest.Author) > 2000 {
+		writeErrorResponse(http.StatusBadRequest, ErrorBadCommentLen, "comment length should be under 2000 characters", rw)
+
+		return
+	}
+
+	err = c.commentService.SaveComment(&Comment{
+		Post:    postName,
+		Author:  commentRequest.Author,
+		Date:    time.Now(),
+		Comment: commentRequest.Comment,
+	})
+	if err != nil {
+		fmt.Println("error saving comment", err)
+
+		rw.WriteHeader(500)
+
+		return
+	}
+
+	rw.WriteHeader(200)
+	fmt.Println("successfully saved comment")
+}
+
+func writeErrorResponse(statusCode int, errorCode int, errorMessage string, rw http.ResponseWriter) error {
+	e := ErrorResponse{
+		ErrorCode:    errorCode,
+		ErrorMessage: errorMessage,
+	}
+
+	bytes, err := json.Marshal(&e)
+	if err != nil {
+		return fmt.Errorf("error marshalling error resp: %w", err)
+	}
+
+	rw.Write(bytes)
 
 	return nil
 }

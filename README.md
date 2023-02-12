@@ -5,4 +5,4 @@
 - [x] hot posts reload
 - [x] basic css design
 - [] comments
-- [] google analytics integration
+- [x] google analytics integration
