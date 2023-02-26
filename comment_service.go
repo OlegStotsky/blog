@@ -14,7 +14,7 @@ type CommentService struct {
 }
 
 type Comment struct {
-	PostID  *uint64   `json:"post_id,omitempty"`
+	PostID  uint64    `json:"post_id,omitempty"`
 	Author  string    `json:"author,omitempty"`
 	Date    time.Time `json:"date"`
 	Comment string    `json:"comment,omitempty"`
@@ -25,6 +25,8 @@ func NewCommentService(commentsCollection *goflatdb.FlatDBCollection[Comment]) (
 }
 
 func (c *CommentService) SaveComment(comment *Comment) error {
+	fmt.Printf("saving comment %+v\n", comment)
+
 	res, err := c.commentsCollection.Insert(comment)
 	if err != nil {
 		return fmt.Errorf("error saving comment: %w", err)
@@ -36,7 +38,7 @@ func (c *CommentService) SaveComment(comment *Comment) error {
 }
 
 func (c *CommentService) GetComments(postID uint64) ([]goflatdb.FlatDBModel[Comment], error) {
-	comments, err := c.commentsCollection.QueryBuilder().Where("post", "=", postID).Execute()
+	comments, err := c.commentsCollection.QueryBuilder().Where("PostID", "=", postID).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("error getting comments: %w", err)
 	}

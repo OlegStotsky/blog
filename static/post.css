@@ -1,0 +1,15 @@
+.comments-container__header {
+    display: flex;
+    justify-content: center;
+    flex-direction: row;
+}
+
+.comments-container__author {
+    font-weight: bold;
+}
+
+.comments-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}

@@ -40,12 +40,14 @@ func NewServer(addr string, commentService *CommentService, postService *PostSer
 		postService:    postService,
 	}
 
+	fs := http.FileServer(http.Dir("./static"))
+
 	r := mux.NewRouter()
-	r.HandleFunc("/", server.Posts).Methods(http.MethodGet)
-	r.HandleFunc("/posts/{postID}", server.Post).Methods(http.MethodGet)
-	r.HandleFunc("/static/{fileName}", server.StaticHandler).Methods(http.MethodGet)
+	r.HandleFunc("/", server.PostsHandler).Methods(http.MethodGet)
+	r.HandleFunc("/posts/{postID}", server.PostHandler).Methods(http.MethodGet)
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", fs))
 	r.HandleFunc("/about", server.AboutHandler).Methods(http.MethodGet)
-	r.HandleFunc("/posts/{postName}/comments", server.CommentHandler).Methods(http.MethodPost)
+	r.HandleFunc("/posts/{postID}/comments", server.CommentHandler).Methods(http.MethodPost)
 
 	srv := http.Server{Addr: addr}
 
@@ -93,6 +95,9 @@ func addAllPageTemplates(t *template.Template) error {
 	if _, err := t.New("google-analytics").ParseFiles("./templates/google-analytics.html"); err != nil {
 		return fmt.Errorf("error parsing google analytics template: %w", err)
 	}
+	if _, err := t.New("footer").ParseFiles("./templates/footer.html"); err != nil {
+		return fmt.Errorf("error parsing footer template: %w", err)
+	}
 
 	return nil
 }
@@ -134,7 +139,7 @@ func (c *Server) AboutHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (c *Server) Posts(rw http.ResponseWriter, r *http.Request) {
+func (c *Server) PostsHandler(rw http.ResponseWriter, r *http.Request) {
 	fmt.Println("got new posts request")
 
 	posts, err := c.postService.GetPosts()
@@ -146,7 +151,7 @@ func (c *Server) Posts(rw http.ResponseWriter, r *http.Request) {
 
 	postsViewData := []PostsTemplateData{}
 	for _, post := range posts {
-		postsViewData = append(postsViewData, PostToPostsViewData(post))
+		postsViewData = append(postsViewData, PostToPostsViewData(&post))
 	}
 
 	if err := c.postsTemplate.Execute(rw, postsViewData); err != nil {
@@ -158,7 +163,7 @@ func (c *Server) Posts(rw http.ResponseWriter, r *http.Request) {
 	fmt.Println("servers posts successfully")
 }
 
-func PostToPostsViewData(post goflatdb.FlatDBModel[Post]) PostsTemplateData {
+func PostToPostsViewData(post *goflatdb.FlatDBModel[Post]) PostsTemplateData {
 	return PostsTemplateData{
 		Name: post.Data.Name,
 		ID:   post.ID,
@@ -166,14 +171,23 @@ func PostToPostsViewData(post goflatdb.FlatDBModel[Post]) PostsTemplateData {
 	}
 }
 
-func PostToPostViewData(post goflatdb.FlatDBModel[Post]) PostTemplateData {
-	return PostTemplateData{
-		Title:   post.Data.Name,
-		Content: post.Data.Content,
+func CommentToCommentViewData(comment *goflatdb.FlatDBModel[Comment]) CommentTemplateData {
+	return CommentTemplateData{
+		Author:  comment.Data.Author,
+		Date:    comment.Data.Date.Format(PostDateLayout),
+		Comment: comment.Data.Comment,
 	}
 }
 
-func (c *Server) Post(rw http.ResponseWriter, r *http.Request) {
+func PostToPostViewData(post *goflatdb.FlatDBModel[Post], comments []CommentTemplateData) PostTemplateData {
+	return PostTemplateData{
+		Title:    post.Data.Name,
+		Content:  post.Data.Content,
+		Comments: comments,
+	}
+}
+
+func (c *Server) PostHandler(rw http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
 	postID := vars["postID"]
@@ -196,7 +210,17 @@ func (c *Server) Post(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.postTemplate.Execute(rw, PostToPostViewData(post)); err != nil {
+	comments, err := c.commentService.GetComments(postIDInt)
+	if err != nil {
+		fmt.Println("error getting comments for post", postIDInt, err)
+	}
+	commentsViewData := []CommentTemplateData{}
+	for _, comment := range comments {
+		commentsViewData = append(commentsViewData, CommentToCommentViewData(&comment))
+	}
+	fmt.Println(comments)
+
+	if err := c.postTemplate.Execute(rw, PostToPostViewData(&post, commentsViewData)); err != nil {
 		fmt.Println("error executing post template", err)
 
 		return
@@ -204,6 +228,11 @@ func (c *Server) Post(rw http.ResponseWriter, r *http.Request) {
 }
 
 type CommentRequest struct {
+	Author  string `json:"author"`
+	Comment string `json:"comment"`
+}
+
+type CommentResponse struct {
 	Author  string `json:"author"`
 	Comment string `json:"comment"`
 }
@@ -216,9 +245,9 @@ type ErrorResponse struct {
 func (c *Server) CommentHandler(rw http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	postName := vars["postName"]
+	postID := vars["postID"]
 
-	fmt.Println("handling comment request for post", postName)
+	fmt.Println("handling comment request for post", postID)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -238,20 +267,46 @@ func (c *Server) CommentHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(commentRequest.Author) < 1 {
+		writeErrorResponse(http.StatusBadRequest, ErrorBadCommentAuthorLen, "author should be at least 1 character long", rw)
+
+		return
+
+	}
+
 	if len(commentRequest.Author) > 100 {
 		writeErrorResponse(http.StatusBadRequest, ErrorBadCommentAuthorLen, "author should be under 100 characters", rw)
 
 		return
 	}
 
-	if len(commentRequest.Author) > 2000 {
+	if len(commentRequest.Comment) > 2000 {
 		writeErrorResponse(http.StatusBadRequest, ErrorBadCommentLen, "comment length should be under 2000 characters", rw)
 
 		return
 	}
 
+	if len(commentRequest.Comment) < 1 {
+		writeErrorResponse(http.StatusBadRequest, ErrorBadCommentLen, "comment length should be > 1", rw)
+
+		return
+	}
+
+	if len(commentRequest.Comment) < 1 {
+		writeErrorResponse(http.StatusBadRequest, ErrorBadCommentLen, "comment length should be more than 1 character", rw)
+
+		return
+	}
+
+	postIDInt, err := strconv.ParseUint(postID, 10, 64)
+	if err != nil {
+		writeErrorResponse(400, ErrorBadPostID, "invalid post id", rw)
+
+		return
+	}
+
 	err = c.commentService.SaveComment(&Comment{
-		//PostID:  post.ID, //todo
+		PostID:  postIDInt,
 		Author:  commentRequest.Author,
 		Date:    time.Now(),
 		Comment: commentRequest.Comment,
@@ -264,11 +319,25 @@ func (c *Server) CommentHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rw.WriteHeader(200)
-	fmt.Println("successfully saved comment")
+	resp := CommentResponse{
+		Author:  commentRequest.Author,
+		Comment: commentRequest.Comment,
+	}
+	respBytes, err := json.Marshal(&resp)
+	if err != nil {
+		fmt.Println("error marshalling comment response", err)
+
+		rw.WriteHeader(500)
+
+		return
+	}
+
+	rw.Write(respBytes)
 }
 
 func writeErrorResponse(statusCode int, errorCode int, errorMessage string, rw http.ResponseWriter) error {
+	rw.WriteHeader(statusCode)
+
 	e := ErrorResponse{
 		ErrorCode:    errorCode,
 		ErrorMessage: errorMessage,
