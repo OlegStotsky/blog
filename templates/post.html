@@ -12,29 +12,29 @@
 </head>
 <body>
 {{.Content}}
-<div class="comments-container">
-    <h3 class="comments-container__header">Comments</h3>
-    {{range .Comments}}
-    <div>
-        <div>
-            <span class="comments-container__author">{{.Author}}</span> {{.Date}}
-        </div>
-        <div class="comments-container__text">
-            {{.Comment}}
+<!--<div class="comments-container">-->
+<!--    <h3 class="comments-container__header">Comments</h3>-->
+<!--    {{range .Comments}}-->
+<!--    <div>-->
+<!--        <div>-->
+<!--            <span class="comments-container__author">{{.Author}}</span> {{.Date}}-->
+<!--        </div>-->
+<!--        <div class="comments-container__text">-->
+<!--            {{.Comment}}-->
 
-            <hr>
-        </div>
-    </div>
-    {{end}}
-    <div>
-        <form id="comment_form" method="POST" action="my-action">
-            <label for="author">Author</label>
-            <input type="text" id="author" name="author"><br>
-            <label for="comment">Comment</label>
-            <textarea name="comment" form="comment_form" id="comment">Enter text here...</textarea>
-            <button> Submit</button>
-        </form>
-    </div>
+<!--            <hr>-->
+<!--        </div>-->
+<!--    </div>-->
+<!--    {{end}}-->
+<!--    <div>-->
+<!--        <form id="comment_form" method="POST" action="my-action">-->
+<!--            <label for="author">Author</label>-->
+<!--            <input type="text" id="author" name="author"><br>-->
+<!--            <label for="comment">Comment</label>-->
+<!--            <textarea name="comment" form="comment_form" id="comment">Enter text here...</textarea>-->
+<!--            <button> Submit</button>-->
+<!--        </form>-->
+<!--    </div>-->
 </div>
 </body>
 {{template "footer"}}

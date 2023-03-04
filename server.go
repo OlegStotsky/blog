@@ -243,6 +243,9 @@ type ErrorResponse struct {
 }
 
 func (c *Server) CommentHandler(rw http.ResponseWriter, r *http.Request) {
+	rw.WriteHeader(400)
+	return
+
 	vars := mux.Vars(r)
 
 	postID := vars["postID"]

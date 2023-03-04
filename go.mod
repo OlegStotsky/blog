@@ -3,7 +3,7 @@ module blog
 go 1.20
 
 require (
-	github.com/OlegStotsky/goflatdb v0.0.0-20230212103358-50412b53c32a
+	github.com/OlegStotsky/goflatdb v0.0.0-20230304094523-1f16ec9e7fc8
 	github.com/gomarkdown/markdown v0.0.0-20221013030248-663e2500819c
 )
 
